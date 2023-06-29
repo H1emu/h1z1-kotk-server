@@ -64,15 +64,22 @@ export class H1Z1Protocol {
       default:
         debug(`Protocol ${this.protocolName} unsupported !`);
         process.exitCode = 0;
-      case "ClientProtocol_860": // normal client from 15 january 2015
+      case "ClientProtocol_860": // normal js client from 15 january 2015
         this.H1Z1Packets = require("../packets/ClientProtocol/ClientProtocol_860/h1z1packets");
         this.PlayerUpdateManagedPositionOpcode = 0x90;
         this.VehicleCollisionOpcode = 0xac;
         this.VehicleDimissOpcode = 0x8818;
         this.weaponOpcode = 0x82;
         break;
-      case "ClientProtocol_1080": // normal client from 22 december 2016
+      case "ClientProtocol_1080": // normal js client from 22 december 2016
         this.H1Z1Packets = require("../packets/ClientProtocol/ClientProtocol_1080/h1z1packets");
+        this.PlayerUpdateManagedPositionOpcode = 0x91;
+        this.VehicleCollisionOpcode = 0xaa;
+        this.VehicleDimissOpcode = 0x8918;
+        this.weaponOpcode = 0x8300;
+        break;
+      case "ClientProtocol_1087": // normal kotk client from 23 february 2017
+        this.H1Z1Packets = require("../packets/ClientProtocol/ClientProtocol_1087/h1z1packets");
         this.PlayerUpdateManagedPositionOpcode = 0x91;
         this.VehicleCollisionOpcode = 0xaa;
         this.VehicleDimissOpcode = 0x8918;

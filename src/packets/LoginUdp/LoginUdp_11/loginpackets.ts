@@ -194,7 +194,7 @@ const packets: PacketStructures = [
     }
   ],
   [
-    "CharacterLoginReply",
+    "CharacterLoginReplyJS",
     0x08,
     {
       fields: [
@@ -206,6 +206,23 @@ const packets: PacketStructures = [
           name: "applicationData",
           type: "byteswithlength",
           fields: applicationDataJS2016 // default
+        }
+      ]
+    }
+  ],
+  [
+    "CharacterLoginReplyKOTK",
+    0x08,
+    {
+      fields: [
+        { name: "unknownQword1", type: "uint64string" },
+        { name: "unknownDword1", type: "uint32" },
+        { name: "unknownDword2", type: "uint32" },
+        { name: "status", type: "uint32" },
+        {
+          name: "applicationData",
+          type: "byteswithlength",
+          fields: applicationDataKOTK // for kotk servers
         }
       ]
     }

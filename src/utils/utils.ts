@@ -825,6 +825,7 @@ export function registerConstructionSlots(
     });
   }
 }
+
 // thx GPT i'm not writing regex myself :)
 export function isValidCharacterName(name: string) {
   // Regular expression that matches all special characters

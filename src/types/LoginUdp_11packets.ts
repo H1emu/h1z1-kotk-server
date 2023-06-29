@@ -38,7 +38,14 @@ export interface CharacterLoginRequest {
   status?: number;
   payload: any;
 }
-export interface CharacterLoginReply {
+export interface CharacterLoginReplyJS {
+  unknownQword1: string;
+  unknownDword1: number;
+  unknownDword2: number;
+  status: number;
+  applicationData: any;
+}
+export interface CharacterLoginReplyKOTK {
   unknownQword1: string;
   unknownDword1: number;
   unknownDword2: number;
@@ -99,4 +106,4 @@ export interface H1emuMessageBox {
   title?: string;
   message?: string;
 }
-export type LoginUdp_11packets = LoginRequest | LoginReply | Logout | ForceDisconnect | CharacterCreateRequest | CharacterCreateReply | CharacterLoginRequest | CharacterLoginReply | CharacterDeleteRequest | CharacterDeleteReply | CharacterSelectInfoRequest | CharacterSelectInfoReply | ServerListRequest | ServerListReply | ServerUpdate | TunnelAppPacketClientToServer | TunnelAppPacketServerToClient | H1emuPrintToConsole | H1emuMessageBox;
+export type LoginUdp_11packets = LoginRequest | LoginReply | Logout | ForceDisconnect | CharacterCreateRequest | CharacterCreateReply | CharacterLoginRequest | CharacterLoginReplyJS | CharacterLoginReplyKOTK | CharacterDeleteRequest | CharacterDeleteReply | CharacterSelectInfoRequest | CharacterSelectInfoReply | ServerListRequest | ServerListReply | ServerUpdate | TunnelAppPacketClientToServer | TunnelAppPacketServerToClient | H1emuPrintToConsole | H1emuMessageBox;

@@ -42,7 +42,8 @@ import {
   CharacterSelectInfoReply,
   ServerListReply,
   CharacterDeleteReply,
-  CharacterLoginReply,
+  CharacterLoginReplyJS,
+  CharacterLoginReplyKOTK,
   CharacterCreateReply,
   CharacterDeleteRequest,
   CharacterLoginRequest,
@@ -60,7 +61,6 @@ import {
   NAME_VALIDATION_STATUS
 } from "../../utils/enums";
 import DataSchema from "h1z1-dataschema";
-import { applicationDataKOTK } from "../../packets/LoginUdp/LoginUdp_11/loginpackets";
 import { Resolver } from "node:dns";
 
 const debugName = "LoginServer";
@@ -144,7 +144,10 @@ export class LoginServer extends EventEmitter {
               await this.CharacterDeleteRequest(client, packet.result);
               break;
             case "CharacterLoginRequest":
-              await this.CharacterLoginRequest(client, packet.result);
+              await this.CharacterLoginRequestJS(client, packet.result);
+              break;
+            case "CharacterLoginRequest":
+              await this.CharacterLoginRequestKOTK(client, packet.result);
               break;
             case "CharacterCreateRequest":
               await this.CharacterCreateRequest(client, packet.result);
@@ -441,8 +444,10 @@ export class LoginServer extends EventEmitter {
     } catch (e) {
       sessionId = sessionIdString;
       gameVersion =
-        client.protocolName === "LoginUdp_9"
-          ? GAME_VERSIONS.H1Z1_15janv_2015
+      client.protocolName === "LoginUdp_9"
+        ? GAME_VERSIONS.H1Z1_15janv_2015
+        : client.protocolName === "LoginUdp_11"
+          ? GAME_VERSIONS.H1Z1_KOTK_PS3
           : GAME_VERSIONS.H1Z1_6dec_2016;
       //console.warn(
       //  "Your session id is not a valid json string, please update your launcher to avoid this warning"
@@ -688,7 +693,7 @@ export class LoginServer extends EventEmitter {
           break;
         }
         case GAME_VERSIONS.H1Z1_KOTK_PS3: {
-          const SoloServer = require("../../../data/kotk/sampleData/single_player_server.json");
+          const SoloServer = require("../../../data/KOTK/sampleData/single_player_server.json");
           servers = [SoloServer];
           break;
         }
@@ -766,11 +771,11 @@ export class LoginServer extends EventEmitter {
     this.sendData(client, "CharacterDeleteReply", characterDeleteReply);
   }
 
-  async getCharactersLoginInfo(
+  async getCharactersLoginInfoJS(
     serverId: number,
     characterId: string,
     loginSessionId: string | undefined
-  ): Promise<CharacterLoginReply> {
+  ): Promise<CharacterLoginReplyJS> {
     const { serverAddress, populationNumber, maxPopulationNumber } =
       await this._db
         .collection(DB_COLLECTIONS.SERVERS)
@@ -815,7 +820,58 @@ export class LoginServer extends EventEmitter {
     };
   }
 
-  async getCharactersLoginInfoSolo(client: Client, characterId: string) {
+  async getCharactersLoginInfoKOTK(
+    serverId: number,
+    characterId: string,
+    loginSessionId: string | undefined
+  ): Promise<CharacterLoginReplyKOTK> {
+    const { serverAddress, populationNumber, maxPopulationNumber } =
+      await this._db
+        .collection(DB_COLLECTIONS.SERVERS)
+        .findOne({ serverId: serverId });
+    const character = await this._db
+      .collection(DB_COLLECTIONS.CHARACTERS_LIGHT)
+      .findOne({ characterId: characterId });
+    let connectionStatus =
+      Object.values(this._zoneConnections).includes(serverId) &&
+      (populationNumber < maxPopulationNumber || !maxPopulationNumber);
+    debug(`connectionStatus ${connectionStatus}`);
+
+    if (!character) {
+      console.error(
+        `CharacterId "${characterId}" unfound on serverId: "${serverId}"`
+      );
+    }
+    const hiddenSession = (await this._db
+      .collection(DB_COLLECTIONS.USERS_SESSIONS)
+      .findOne({ authKey: loginSessionId })) ?? { guid: "" };
+    if (!connectionStatus && hiddenSession.guid) {
+      // Admins bypass max pop
+      connectionStatus = (await this.askZone(serverId, "ClientIsAdminRequest", {
+        guid: hiddenSession.guid
+      })) as boolean;
+    }
+    return {
+      unknownQword1: "0x0",
+      unknownDword1: 0,
+      unknownDword2: 0,
+      status: character ? Number(connectionStatus) : 0,
+      applicationData: {
+        unknownByte1: 0,
+        unknownByte2: 0,
+        serverAddress: serverAddress,
+        serverTicket: hiddenSession?.guid,
+        encryptionKey: this._cryptoKey,
+        guid: characterId,
+        unknownQword2: "0x0",
+        stationName: "",
+        characterName: character ? character.payload.name : "error",
+        unknownString: ""
+      }
+    };
+  }
+
+  async getCharactersLoginInfoSoloJS(client: Client, characterId: string) {
     const SinglePlayerCharacters = await this.loadCharacterData(client);
     let character;
     switch (client.gameVersion) {
@@ -827,7 +883,7 @@ export class LoginServer extends EventEmitter {
         character.characterName = character.payload.name;
         break;
       }
-      case GAME_VERSIONS.H1Z1_KOTK_PS3:
+      case GAME_VERSIONS.H1Z1_KOTK_PS3:      
       case GAME_VERSIONS.H1Z1_6dec_2016: {
         character = SinglePlayerCharacters.find(
           (character: any) => character.characterId === characterId
@@ -841,6 +897,40 @@ export class LoginServer extends EventEmitter {
       unknownDword2: 0,
       status: 1,
       applicationData: {
+        serverAddress: `${this._soloPlayIp}:1117`,
+        serverTicket: client.loginSessionId,
+        encryptionKey: this._cryptoKey,
+        guid: characterId,
+        unknownQword2: "0x0",
+        stationName: "",
+        characterName: character.characterName,
+        unknownString: ""
+      }
+    };
+  }
+
+  async getCharactersLoginInfoSoloKOTK(client: Client, characterId: string) {
+    const SinglePlayerCharacters = await this.loadCharacterData(client);
+    let character;
+    switch (client.gameVersion) {
+      default:
+      case GAME_VERSIONS.H1Z1_15janv_2015:
+      case GAME_VERSIONS.H1Z1_KOTK_PS3: {
+        character = SinglePlayerCharacters.find(
+          (character: any) => character.characterId === characterId
+        );
+        break;
+      }     
+      case GAME_VERSIONS.H1Z1_6dec_2016:
+    }
+    return {
+      unknownQword1: "0x0",
+      unknownDword1: 0,
+      unknownDword2: 0,
+      status: 1,
+      applicationData: {
+        unknownByte1: 0,
+        unknownByte2: 0,
         serverAddress: `${this._soloPlayIp}:1117`,
         serverTicket: client.loginSessionId,
         encryptionKey: this._cryptoKey,
@@ -899,13 +989,13 @@ export class LoginServer extends EventEmitter {
     return banInfos;
   }
 
-  async CharacterLoginRequest(client: Client, packet: CharacterLoginRequest) {
-    let charactersLoginInfo: CharacterLoginReply;
+  async CharacterLoginRequestJS(client: Client, packet: CharacterLoginRequest) {
+    let charactersLoginInfoJS: CharacterLoginReplyJS;
     const { serverId, characterId } = packet;
     let CharacterAllowedOnZone = 1;
     let banInfos: Array<{ banInfo: BAN_INFO }> = [];
     if (!this._soloMode) {
-      charactersLoginInfo = await this.getCharactersLoginInfo(
+      charactersLoginInfoJS = await this.getCharactersLoginInfoJS(
         serverId,
         characterId,
         client.loginSessionId
@@ -917,20 +1007,14 @@ export class LoginServer extends EventEmitter {
         { characterId: characterId, banInfos }
       )) as number;
     } else {
-      charactersLoginInfo = await this.getCharactersLoginInfoSolo(
+      charactersLoginInfoJS = await this.getCharactersLoginInfoSoloJS(
         client,
         characterId
       );
     }
-    if (client.gameVersion === GAME_VERSIONS.H1Z1_KOTK_PS3) {
-      charactersLoginInfo.applicationData = DataSchema.pack(
-        applicationDataKOTK,
-        charactersLoginInfo.applicationData
-      ).data;
-    }
-    debug(charactersLoginInfo);
-    if (charactersLoginInfo.status) {
-      charactersLoginInfo.status = Number(CharacterAllowedOnZone);
+    debug(charactersLoginInfoJS);
+    if (charactersLoginInfoJS.status) {
+      charactersLoginInfoJS.status = Number(CharacterAllowedOnZone);
     } else {
       this.sendData(client, "H1emu.PrintToConsole", {
         message: `Invalid character status! If this is a new character, please delete and recreate it.`,
@@ -964,7 +1048,80 @@ export class LoginServer extends EventEmitter {
         clearOutput: true
       });
     }
-    this.sendData(client, "CharacterLoginReply", charactersLoginInfo);
+    this.sendData(client, "CharacterLoginReplyJS", charactersLoginInfoJS);
+    debug("CharacterLoginRequest");
+  }
+
+  async CharacterLoginRequestKOTK(client: Client, packet: CharacterLoginRequest) {
+    let charactersLoginInfoKOTK: CharacterLoginReplyKOTK;
+    const { serverId, characterId } = packet;
+    let CharacterAllowedOnZone = 1;
+    let banInfos: Array<{ banInfo: BAN_INFO }> = [];
+    if (!this._soloMode) {
+      charactersLoginInfoKOTK = await this.getCharactersLoginInfoKOTK(
+        serverId,
+        characterId,
+        client.loginSessionId
+      );
+      banInfos = await this.getOwnerBanInfo(serverId, client);
+      CharacterAllowedOnZone = (await this.askZone(
+        serverId,
+        "CharacterAllowedRequest",
+        { characterId: characterId, banInfos }
+      )) as number;
+    } else {
+      charactersLoginInfoKOTK = await this.getCharactersLoginInfoSoloKOTK(
+        client,
+        characterId
+      );
+    }
+    /*
+    (doggo) - not sure if needed for kotk will see later... commented out for now!
+
+    if (client.gameVersion === GAME_VERSIONS.H1Z1_KOTK_PS3) {
+      charactersLoginInfoKOTK.applicationData = DataSchema.pack(
+        applicationDataKOTK,
+        charactersLoginInfoKOTK.applicationData
+      ).data;
+    }
+    */
+    debug(charactersLoginInfoKOTK);
+    if (charactersLoginInfoKOTK.status) {
+      charactersLoginInfoKOTK.status = Number(CharacterAllowedOnZone);
+    } else {
+      this.sendData(client, "H1emu.PrintToConsole", {
+        message: `Invalid character status! If this is a new character, please delete and recreate it.`,
+        showConsole: true,
+        clearOutput: true
+      });
+    }
+    if (!CharacterAllowedOnZone) {
+      let reason =
+        "UNDEFINED. If this is a new character, please delete and recreate it.";
+      switch (banInfos[0]?.banInfo) {
+        case 1:
+          reason = "LOCAL_BAN";
+          break;
+        case 2:
+          reason = "GLOBAL_BAN";
+          break;
+        case 3:
+          reason = "VPN";
+          break;
+        case 4:
+          reason = "HWID_BAN";
+          break;
+        case 5:
+          reason = "UNVERIFIED";
+          break;
+      }
+      this.sendData(client, "H1emu.PrintToConsole", {
+        message: `CONNECTION REJECTED! Reason: ${reason}`,
+        showConsole: true,
+        clearOutput: true
+      });
+    }
+    this.sendData(client, "CharacterLoginReplyKOTK", charactersLoginInfoKOTK);
     debug("CharacterLoginRequest");
   }
 
@@ -1024,7 +1181,12 @@ export class LoginServer extends EventEmitter {
         break;
       }
       default:
-      case GAME_VERSIONS.H1Z1_KOTK_PS3:
+      case GAME_VERSIONS.H1Z1_KOTK_PS3: {
+        sampleCharacter = require("../../../data/KOTK/sampleData/character.json");
+        newCharacter = _.cloneDeep(sampleCharacter) as any;
+        newCharacter.characterName = characterName;
+        break;
+      }
       case GAME_VERSIONS.H1Z1_6dec_2016: {
         sampleCharacter = require("../../../data/2016/sampleData/character.json");
         newCharacter = _.cloneDeep(sampleCharacter) as any;
@@ -1103,7 +1265,16 @@ export class LoginServer extends EventEmitter {
           break;
         }
         default:
-        case GAME_VERSIONS.H1Z1_KOTK_PS3:
+        case GAME_VERSIONS.H1Z1_KOTK_PS3: {
+          newCharacterData = {
+            characterId: newCharacter.characterId,
+            serverId: newCharacter.serverId,
+            ownerId: sessionObj.guid,
+            payload: packet.payload,
+            status: 1
+          };
+          break;
+        }
         case GAME_VERSIONS.H1Z1_6dec_2016: {
           newCharacterData = {
             characterId: newCharacter.characterId,
